@@ -50,8 +50,8 @@ BOOKING_SYSTEM_PROMPT = """
     If the tool returns no relevant context, reply:
     "I need to check with the clinic staff for that information."
 
-    Example tool usage:
-    retrieve_clinic_knowledge({"query": user_question})
+    Call the retrieve_clinic_knowledge tool with:
+    {{"query": <user question>}}
     --------------------------------------------------
     STATE MANAGEMENT RULES
     --------------------------------------------------
@@ -135,6 +135,17 @@ BOOKING_SYSTEM_PROMPT = """
 # ==============================
 # 2️⃣ LLM + TOOL BINDING
 # ==============================
+extractor_prompt = ChatPromptTemplate.from_messages([
+    ("system", """
+Extract the patient's name and email from the conversation.
+
+Rules:
+- Only extract if explicitly mentioned
+- Do NOT guess
+- Return null if missing
+"""),
+    MessagesPlaceholder(variable_name="messages")
+])
 
 llm = ChatOpenAI(
     model="gpt-4o-mini",
@@ -167,7 +178,7 @@ agent_chain = prompt | llm.bind_tools(tools)
 
 tool_node = ToolNode(tools)
 
-extractor_chain = prompt | llm.with_structured_output(ExtractedPatientInfo)
+extractor_chain = extractor_prompt | llm.with_structured_output(ExtractedPatientInfo)
 
 def scheduling_agent_node(state: ClinicState) -> ClinicState:
     """
@@ -181,14 +192,17 @@ def scheduling_agent_node(state: ClinicState) -> ClinicState:
         print("\n--- DEBUG: Wiping old appointment data from state! ---")
         state["status"] = None
     now = datetime.now()
+
     current_date = now.date().isoformat()
-    current_day = now.strftime("%A") 
-    # --------------------------
+    current_day = now.strftime("%A")
+
+    today_str = f"{current_day}, {current_date}"
+        # --------------------------
     # 1️⃣ Extract name & email
     # --------------------------
     extracted = extractor_chain.invoke({
         "messages": state["messages"],
-        "today": current_date
+       
     })
 
     if extracted.patient_name:
@@ -203,7 +217,7 @@ def scheduling_agent_node(state: ClinicState) -> ClinicState:
     
     response = agent_chain.invoke({
         "messages": state["messages"],
-        "today": current_date
+        "today": today_str
     })
 
     state["messages"].append(response)

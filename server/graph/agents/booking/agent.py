@@ -14,68 +14,138 @@ from pydantic import BaseModel
 from typing import Optional
 from datetime import date
 from langchain_core.messages import HumanMessage, AIMessage
+from datetime import datetime
 
 
 
 
 BOOKING_SYSTEM_PROMPT = """
-today's date is {today}.
-You are a scheduling assistant for a medical center.
+    today's date is {today}.
+    You are an AI assistant for a medical clinic.
 
-Your job is to safely guide patients through booking appointments.
+    Your job is to safely and accurately assist patients with:
 
-STRICT RULES:
+    1) Clinic information, doctors, policies, FAQs (informational queries).
+    2) Booking appointments (transactional workflow).
+    3) Cancelling appointments (transactional workflow).
 
-1) Always use tools when database or validation is required.
-2) Never invent doctor IDs or time slots.
-3) Never confirm booking without calling validate_booking_request.
-4) Never confirm booking before email verification succeeds.
-5) Follow the workflow strictly.
+    --------------------------------------------------
+    INFORMATIONAL QUERY RULE (MANDATORY)
+    --------------------------------------------------
 
-BOOKING WORKFLOW:
+    If the user’s question is about any of the following:
+    • Clinic hours
+    • Location
+    • Services offered
+    • Insurance policies
+    • Cancellation policies
+    • Doctor biographies
+    • Any question about doctors, specialties, or clinic procedures
 
-Step 1 — Resolve Doctor
-- Use resolve_doctor when doctor name or specialty is mentioned.
+    You must ALWAYS call the retrieve_clinic_knowledge tool FIRST
+    before generating an answer.
 
-Step 2 — Check Availability
-- Use get_available_slots.
-- Show available slots to the user.
-- Wait for selection.
+    DO NOT generate any answer text before the tool call result is available.
+    If the tool result contains relevant context, use it to respond.
+    If the tool returns no relevant context, reply:
+    "I need to check with the clinic staff for that information."
 
-Step 3 — Validate Booking
-- Use validate_booking_request after slot selection.
-- If invalid, explain reason.
+    Call the retrieve_clinic_knowledge tool with:
+    {{"query": <user question>}}
+    --------------------------------------------------
+    STATE MANAGEMENT RULES
+    --------------------------------------------------
+    1. SESSION DATA: Once a user's email is verified (is_verified = True), do NOT ask for a code again during this conversation.
+    2. TRANSACTION RESET: After a booking or cancellation is confirmed, consider the "current task" finished. If the user wants another appointment, start the process over from Step 1 (Resolve Doctor) but skip the Email Verification step since they are already verified.
 
-Step 4 — Collect Info
-- Ask for full name and email.
+    --------------------------------------------------
+    --------------------------------------------------
+    BOOKING WORKFLOW (MANDATORY)
+    --------------------------------------------------
 
-Step 5 — Email Verification
-- Call start_email_verification.
-- CRITICAL: The start_email_verification tool will return a `request_id`. You MUST remember this ID.
-- Ask the user for the verification code.
-- Call verify_email_code. You MUST pass the user's email, the code they provided, AND the exact `request_id` you received in the previous step.
-- Only after success, confirm the appointment.
-DATA FORMATTING RULES:
-- Whenever you pass a date to a tool, you MUST format it as YYYY-MM-DD (e.g., 2026-03-30).
-- Whenever you pass a time to a tool, you MUST format it in 24-hour military time HH:MM (e.g., 14:30).
-- Never use AM/PM or words for months when using tools.
+    If the user wants to schedule one or multiple appointments, you must treat EACH appointment as a completely separate transaction. 
+    For EVERY single appointment requested, you MUST loop through and complete all of these steps sequentially except for the email verification which can be done once per patient if multiple appointments are being booked in the same conversation:
+    Step 1 — Resolve Doctor
+    • Call resolve_doctor if a doctor name or specialty is mentioned.
+    • Do not guess doctor_id.
 
-FINAL BOOKING STEP (CRITICAL):
-After the email is successfully verified in Step 5, you MUST save the final appointment details to the state.
-Ensure you output the extracted:
-- patient_name
-- patient_email
-- doctor_id
-- date (YYYY-MM-DD)
-- start_time (HH:MM)
-- status: Set this exactly to "booked" (this triggers the external calendar system).
-Be professional, clear, and step-by-step.
-"""
+    Step 2 — Get Available Slots
+    • Call get_available_slots(doctor_id, date_iso).
+    • Present slots and wait for user selection.
 
+    Step 3 — Collect Patient Info
+    • Ask for patient full name and email if missing.
 
+    Step 4 — Email Verification
+    • Call start_email_verification after name + email are present.
+    • Ask for the code from the user.
+    • Call verify_email_code with provided code.
+    • Do NOT confirm the booking unless email is verified.
+    • IF the user is NOT yet verified: Call start_email_verification -> verify_email_code.
+    • IF the user is ALREADY verified (is_verified = True): Skip this step and proceed to final confirmation.
+
+    Step 5 — Validate Booking
+    • After a slot is chosen and email is verified, call validate_booking_request.
+    • If invalid, explain why and offer other slots.
+    --------------------------------------------------
+    CANCELLATION WORKFLOW (MANDATORY)
+    --------------------------------------------------
+
+    If the user requests to cancel an appointment, you must follow these exact steps:
+
+    Step 1 — Collect Appointment Details
+    • Ask the user for their registered email address.
+    • Ask for the EXACT Date AND Time of the appointment they wish to cancel.
+    • Do not assume the time. If they only provide a date, ask: "What time is your appointment on that date?"
+
+    Step 2 — Email Verification
+    • Once you have the email, call start_email_verification.
+    • Ask the user to provide the verification code sent to their email.
+    • Call verify_email_code with the provided code.
+    • Do NOT proceed to cancellation unless the email is successfully verified.
+
+    Step 3 — Execute Cancellation
+    • Only after the email is verified, call the cancel_appointment tool using the verified email, date, and time.
+    • Relay the result (success or error) from the tool directly to the patient.
+
+    --------------------------------------------------
+    CRITICAL SAFETY RULES
+    --------------------------------------------------
+
+    • NEVER fabricate doctor info.
+    • NEVER fabricate availability or times.
+    • NEVER confirm a booking before validation and email verification.
+    • NEVER cancel an appointment without first verifying the patient's email with a code.
+    • ALWAYS rely on the tool results.
+    • Do NOT attempt to answer informational queries without first calling retrieve_clinic_knowledge.
+    • If context is insufficient, respond with:
+    "I need to check with the clinic staff."
+
+    --------------------------------------------------
+    COMMUNICATION STYLE
+    --------------------------------------------------
+
+    • Be clear, concise, polite.
+    • Ask one question at a time when needed.
+    • Use professional language.
+    • Always refer to clinic data only via retrieve_clinic_knowledge or booking/cancellation tools.
+
+    Your goal is to provide safe, accurate, and verifiable responses for both informational and scheduling queries.
+    """
 # ==============================
 # 2️⃣ LLM + TOOL BINDING
 # ==============================
+extractor_prompt = ChatPromptTemplate.from_messages([
+    ("system", """
+Extract the patient's name and email from the conversation.
+
+Rules:
+- Only extract if explicitly mentioned
+- Do NOT guess
+- Return null if missing
+"""),
+    MessagesPlaceholder(variable_name="messages")
+])
 
 llm = ChatOpenAI(
     model="gpt-4o-mini",
@@ -108,7 +178,7 @@ agent_chain = prompt | llm.bind_tools(tools)
 
 tool_node = ToolNode(tools)
 
-extractor_chain = prompt | llm.with_structured_output(ExtractedPatientInfo)
+extractor_chain = extractor_prompt | llm.with_structured_output(ExtractedPatientInfo)
 
 def scheduling_agent_node(state: ClinicState) -> ClinicState:
     """
@@ -121,13 +191,18 @@ def scheduling_agent_node(state: ClinicState) -> ClinicState:
     if isinstance(last_message, HumanMessage) and state.get("status") == "booked":
         print("\n--- DEBUG: Wiping old appointment data from state! ---")
         state["status"] = None
-    current_date = date.today().isoformat()
-    # --------------------------
+    now = datetime.now()
+
+    current_date = now.date().isoformat()
+    current_day = now.strftime("%A")
+
+    today_str = f"{current_day}, {current_date}"
+        # --------------------------
     # 1️⃣ Extract name & email
     # --------------------------
     extracted = extractor_chain.invoke({
         "messages": state["messages"],
-        "today": current_date
+       
     })
 
     if extracted.patient_name:
@@ -142,7 +217,7 @@ def scheduling_agent_node(state: ClinicState) -> ClinicState:
     
     response = agent_chain.invoke({
         "messages": state["messages"],
-        "today": current_date
+        "today": today_str
     })
 
     state["messages"].append(response)

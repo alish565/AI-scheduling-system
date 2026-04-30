@@ -140,9 +140,10 @@ def validate_booking_request(
     # ✅ All good
     return {
         "validation_result": True,
-        "status": "appointment_booked",
+        "status": "validated_pending_booking", # 👈 FIX: No longer mimics the final booked status
         "doctor_id": doctor_id,
         "date": date_iso,
         "start_time": start_time,
-        "end_time": end_time
+        "end_time": end_time,
+        "instruction_for_llm": "SUCCESS: This slot is valid and there are no conflicts. You MUST now verify the email (if not done yet) and then call finalize_booking to save it."
     }

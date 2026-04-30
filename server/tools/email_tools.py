@@ -101,7 +101,7 @@ def verify_email_code(email: str, code: str, request_id: str) -> dict:
         if is_success:
              return {
                  "email_verified": True,
-                 "instruction_for_llm": "SUCCESS: The code is correct. You MUST now call the finalize_booking tool to save the appointment."
+                 "instruction_for_llm": "SUCCESS: The code is correct. You MUST now call the validate_booking_request tool to validate the appointment."
              }
         else:
              return {

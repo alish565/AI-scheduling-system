@@ -1,0 +1,79 @@
+--- DOCTOR BIOS ---
+
+Dr. Lina Hassan
+Specialty: Dermatology
+Experience: 10 years
+Education: University of Beirut, MD
+Languages: English, Arabic
+Consultation Type: Skin issues, acne, eczema, rashes
+Availability: Mon 11:00-17:00, Wed 09:00-15:00
+
+Dr. Ahmad Saleh
+Specialty: Cardiology
+Experience: 12 years
+Education: American University of Beirut, MD
+Languages: English, Arabic, French
+Consultation Type: Heart conditions, hypertension, chest pain
+Availability: Mon 09:00-13:00, Tue 10:00-16:00, Thu 09:00-14:00
+
+Dr. Omar Khalil
+Specialty: General Medicine
+Experience: 15 years
+Education: University of Beirut, MD
+Languages: English, Arabic
+Consultation Type: General checkups, chronic illness follow-ups
+Availability: Sun 09:00-17:00, Tue 09:00-17:00, Thu 09:00-17:00
+
+--- CLINIC FAQS ---
+
+1. What insurance do you accept?
+We accept Insurance A, Insurance B, and Insurance C.
+
+2. How do I cancel an appointment?
+You can cancel via WhatsApp, our website, or by calling the clinic at least 24 hours in advance.
+
+3. What are the clinic hours?
+Sunday to Thursday, 09:00 to 17:00.
+
+4. Can I reschedule my appointment?
+Yes, you may reschedule at least 24 hours before your booked slot.
+
+5. Are walk-ins allowed?
+Walk-ins are allowed only for general medicine and minor emergencies.
+
+--- APPOINTMENT POLICIES ---
+
+- Cardiology appointments require a referral from a general practitioner.
+- Dermatology appointments can be booked directly.
+- All appointments require patient full name, phone number, and email.
+- Maximum of one appointment per patient per day per specialty.
+- Emergency cases override normal scheduling rules.
+
+--- EMERGENCY INSTRUCTIONS ---
+
+- Chest pain, unconsciousness, severe bleeding: Call emergency services immediately.
+- Minor skin irritation: Schedule a dermatology appointment.
+- High fever (>39°C): Schedule a general medicine appointment.
+- Severe allergic reaction: Call emergency services immediately.
+
+--- PATIENT PREPARATION GUIDES ---
+
+Blood Tests:
+- Fasting required for 8-12 hours before blood tests.
+- Drink water only, avoid coffee or tea.
+- Bring ID and insurance card.
+
+Dermatology Consultation:
+- Note any current medications or creams used.
+- Take photos of skin issues if possible.
+
+Cardiology Consultation:
+- Bring prior test results (ECG, echocardiogram).
+- List current medications.
+- Avoid caffeine 2 hours before the appointment.
+
+General Checkup:
+- Bring vaccination history.
+- List any chronic conditions or medications.
+
+--- END OF DOCUMENT ---

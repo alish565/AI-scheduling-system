@@ -1,0 +1,38 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: AI_scheduling
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d AI_scheduling"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    
+  api:
+    build: 
+      context: ./server
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://postgres:password@db:5432/AI_scheduling
+      - PYTHONPATH=/app  # Removed /server - this fixes the Import error
+    volumes:
+      # Maps your local data directly to the graph folder in /app
+      - ./chroma_data:/app/graph/agents/rag/chroma_db
+    env_file:
+      - ./server/.env
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  postgres_data: 
+  

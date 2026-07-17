@@ -1,7 +1,7 @@
 from datetime import datetime, date
 import pytz
 from sqlalchemy import text
-from ..db.session import get_db
+from db.session import get_db
 from langchain.tools import tool
 
 CLINIC_TZ = pytz.timezone("Asia/Beirut")

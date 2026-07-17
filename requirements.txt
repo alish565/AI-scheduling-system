@@ -1,9 +1,0 @@
-langchain_text_splitters
-langchain_community
-langchain
-langchain_huggingface
-sqlalchemy
-dotenv
-openai 
-langchain_openai
-chromadb

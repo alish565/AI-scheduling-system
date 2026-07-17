@@ -73,7 +73,8 @@ def rag_chain_node(state: dict) -> dict:
 
     docs = retriever.invoke(search_query)
     context_text = "\n".join([d.page_content for d in docs])
-
+    print(f"--- 🛠️ RAG DEBUG: Search Query Used -> '{search_query}'")
+    print(f"--- 🛠️ RAG DEBUG: Number of Documents Found -> {len(docs)}")
     response = llm.invoke([
         {"role": "system", "content": RAG_PROMPT.format(context=context_text)},
         {"role": "user", "content": raw_question}

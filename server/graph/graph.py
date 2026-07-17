@@ -1,13 +1,29 @@
 from langgraph.graph import StateGraph, END
-from server.graph.state import ClinicState
-from server.graph.agents.booking.agent import (
+from graph.state import ClinicState
+from graph.agents.booking.agent import (
     scheduling_agent_node,
     tool_node 
 )
-from langgraph.checkpoint.memory import MemorySaver
-from server.graph.agents.booking.update_state import update_state_from_tools
-from server.graph.agents.rag.rag import rag_chain_node
-from server.graph.agents.router import router_node
+from graph.agents.booking.update_state import update_state_from_tools
+from graph.agents.rag.rag import rag_chain_node
+from graph.agents.router import router_node
+import os
+from psycopg_pool import ConnectionPool
+from langgraph.checkpoint.postgres import PostgresSaver
+
+RAW_DB_URI = os.getenv("DATABASE_URL", "postgresql+psycopg://postgres:password@localhost:5432/AI_scheduling")
+
+# 2. Strip out the "+psycopg" part specifically for LangGraph
+LANGGRAPH_DB_URI = RAW_DB_URI.replace("+psycopg", "")
+
+# 3. Pass the clean URL to the ConnectionPool
+connection_pool = ConnectionPool(
+    conninfo=LANGGRAPH_DB_URI,
+    max_size=20,
+    kwargs={"autocommit": True} 
+)
+memory = PostgresSaver(connection_pool)
+memory.setup()
 
 def should_continue(state: ClinicState):
     last_message = state["messages"][-1]
@@ -65,8 +81,6 @@ builder.add_edge("update_state", "schedule")
 builder.add_edge("rag", END)
 
 
-
-memory = MemorySaver()
 # Compile with checkpointer to enable "threads" (conversations)
 graph = builder.compile(checkpointer=memory)
 

@@ -2,9 +2,19 @@ import requests
 from langchain_core.tools import tool
 import requests
 from langchain_core.tools import tool
+import os
 
 # You will get this URL in Step 2 from your new n8n workflow
-CANCEL_WEBHOOK_URL = "https://leeann-bioptic-bertram.ngrok-free.dev/webhook/cancel-appointment" 
+
+CANCEL_WEBHOOK_URL = os.getenv("N8N_CANCEL_URL")
+
+N8N_API_KEY = os.getenv("N8N_API_KEY")
+
+def get_n8n_headers():
+    return {
+        "Content-Type": "application/json",
+        "X-API-KEY": N8N_API_KEY
+    }
 
 @tool
 def cancel_appointment(patient_email: str, date_iso: str, time_str: str) -> dict:
@@ -19,11 +29,12 @@ def cancel_appointment(patient_email: str, date_iso: str, time_str: str) -> dict
     payload = {
         "patient_email": patient_email,
         "date": date_iso,
-        "time": time_str  # 👈 This is the crucial addition!
+        "time": time_str 
     }
     
     try:
-        response = requests.post(CANCEL_WEBHOOK_URL, json=payload)
+        # 2. Added headers=get_n8n_headers() here!
+        response = requests.post(CANCEL_WEBHOOK_URL, json=payload, headers=get_n8n_headers(), timeout=15)
         
         if response.status_code == 200:
             return {

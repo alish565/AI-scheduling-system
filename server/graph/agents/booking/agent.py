@@ -3,13 +3,13 @@ from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langgraph.prebuilt import ToolNode
 from langgraph.graph import END
 from langchain_core.messages import AIMessage
-from server.graph.state import ClinicState
-from server.tools.resolve_doctor import resolve_doctor
-from server.tools.available_slots import get_available_slots
-from server.tools.validation import validate_booking_request
-from server.tools.email_tools import start_email_verification, verify_email_code
-from server.tools.finalize_booking import finalize_booking
-from server.tools.cancel import cancel_appointment
+from graph.state import ClinicState
+from tools.resolve_doctor import resolve_doctor
+from tools.available_slots import get_available_slots
+from tools.validation import validate_booking_request
+from tools.email_tools import start_email_verification, verify_email_code
+from tools.finalize_booking import finalize_booking
+from tools.cancel import cancel_appointment
 from pydantic import BaseModel
 from typing import Optional
 from datetime import date
@@ -169,10 +169,9 @@ class ExtractedPatientInfo(BaseModel):
 
 
 prompt = ChatPromptTemplate.from_messages([
-    ("system", BOOKING_SYSTEM_PROMPT),
+    ("system", BOOKING_SYSTEM_PROMPT + "\n\nCURRENT SESSION STATE:\nPatient Verified: {is_verified}\nCaptured Name: {patient_name}\nCaptured Email: {patient_email}"),
     MessagesPlaceholder(variable_name="messages")
 ])
-
 
 agent_chain = prompt | llm.bind_tools(tools)
 
@@ -182,27 +181,47 @@ extractor_chain = extractor_prompt | llm.with_structured_output(ExtractedPatient
 
 def scheduling_agent_node(state: ClinicState) -> ClinicState:
     """
-    1️⃣ Extract patient info from conversation
-    2️⃣ Run booking agent to decide tool usage
+    1️⃣ Safe-reset appointment specific flags for multiple bookings
+    2️⃣ Extract patient info from conversation
+    3️⃣ Run booking agent with dynamic verification awareness
     """
     last_message = state["messages"][-1]
 
-    # 🛑 THE STATE WIPE: If the user sends a new message AFTER a successful booking
+    # 🔄 RE-BOOKING CONTEXT CHECK:
+    # If a booking just completed and the user starts talking again, 
+    # clear ONLY appointment parameters, preserving identity & verification status.
+    # 🛑 THE STATE WIPE: Clear previous transaction parameters, PRESERVE user profile
     if isinstance(last_message, HumanMessage) and state.get("status") == "booked":
-        print("\n--- DEBUG: Wiping old appointment data from state! ---")
+        print("\n--- DEBUG: Wiping old appointment parameters! Preserving patient profile. ---")
+        
+        # 1. Clear ONLY the appointment-specific details
         state["status"] = None
-    now = datetime.now()
+        state["doctor_id"] = None
+        state["date"] = None
+        state["start_time"] = None
+        state["end_time"] = None
+        state["available_slots"] = None
+        state["validation_result"] = None
+        state["validation_fail_reason"] = None
+        
+        # 2. Maintain identity safety nets
+        if state.get("email_verified") is None:
+            state["email_verified"] = False
 
+    # Ensure is_verified is initialized if missing in a fresh chat
+    if "is_verified" not in state:
+        state["is_verified"] = False
+
+    now = datetime.now()
     current_date = now.date().isoformat()
     current_day = now.strftime("%A")
-
     today_str = f"{current_day}, {current_date}"
-        # --------------------------
+
+    # --------------------------
     # 1️⃣ Extract name & email
     # --------------------------
     extracted = extractor_chain.invoke({
         "messages": state["messages"],
-       
     })
 
     if extracted.patient_name:
@@ -212,12 +231,16 @@ def scheduling_agent_node(state: ClinicState) -> ClinicState:
         state["patient_email"] = extracted.patient_email
 
     # --------------------------
-    # 2️⃣ Run booking agent
+    # 2️⃣ Run booking agent with state awareness
     # --------------------------
-    
+    # We pass 'is_verified' directly into the prompt rendering so the LLM 
+    # reads its own state rules context accurately.
     response = agent_chain.invoke({
         "messages": state["messages"],
-        "today": today_str
+        "today": today_str,
+        "is_verified": state["is_verified"],
+        "patient_name": state.get("patient_name", "Unknown"),
+        "patient_email": state.get("patient_email", "Unknown")
     })
 
     state["messages"].append(response)

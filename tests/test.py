@@ -1,5 +1,5 @@
 import uuid
-from server.graph.graph import graph
+from app.graph.graph import graph
 
 # Define the config OUTSIDE or INSIDE the function depending on if 
 # you want a new session every time you run the script.

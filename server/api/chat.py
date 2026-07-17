@@ -2,8 +2,14 @@ import uuid
 from typing import List, Optional
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from server.graph.graph import graph
+from graph.graph import graph
+import db.models
+from db.models import Base
+from db.session import engine, get_db
+from contextlib import asynccontextmanager
 
+Base.metadata.create_all(bind=engine) 
+print("🎯 Core tables forced successfully!")
 
 app = FastAPI(title="Clinic AI Scheduler API")
 
@@ -25,7 +31,7 @@ class ChatResponse(BaseModel):
 
 
 @app.post("/chat", response_model=ChatResponse)
-async def chat_endpoint(request: ChatRequest):
+def chat_endpoint(request: ChatRequest):
     # 1. Handle thread_id (Use provided one or start fresh)
     thread_id = request.thread_id or str(uuid.uuid4())
     config = {"configurable": {"thread_id": thread_id}}
@@ -37,7 +43,7 @@ async def chat_endpoint(request: ChatRequest):
         
         # This will automatically pull history from MemorySaver 
         # based on the thread_id
-        result = await graph.ainvoke(input_data, config)
+        result = graph.invoke(input_data, config)
 
         # 3. Extract data from the updated state
         messages = result.get("messages", [])

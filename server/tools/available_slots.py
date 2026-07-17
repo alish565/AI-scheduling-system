@@ -1,7 +1,7 @@
 from sqlalchemy import text
 from datetime import date, timedelta, datetime
 import pytz # type: ignore 
-from ..db.session import get_db
+from db.session import get_db
 from langchain.tools import tool
 
 
@@ -75,8 +75,10 @@ def get_available_slots(doctor_id: str, date_iso: str) -> dict:
         if weekday_key not in working_hours:
             return {"slots": [], "reason": "Doctor not working this day"}
 
-        # 2️⃣ Generate candidate slots
         candidate_slots = []
+        
+        # Capture the current live time in the clinic's exact timezone
+        now_in_clinic = datetime.now(CLINIC_TIMEZONE)
 
         for time_range in working_hours[weekday_key]:
             start_str, end_str = time_range.split("-")
@@ -90,7 +92,15 @@ def get_available_slots(doctor_id: str, date_iso: str) -> dict:
 
             current = window_start
             while current + timedelta(minutes=APPOINTMENT_DURATION_MINUTES) <= window_end:
-                candidate_slots.append((current, current + timedelta(minutes=APPOINTMENT_DURATION_MINUTES)))
+                # 👇 THE INTRA-DAY PAST TIME FILTER
+                # If the slot is for today, it must start in the future relative to now_in_clinic
+                if target_date == now_in_clinic.date():
+                    if current > now_in_clinic:
+                        candidate_slots.append((current, current + timedelta(minutes=APPOINTMENT_DURATION_MINUTES)))
+                else:
+                    # For future dates, all candidate slots are safe to add
+                    candidate_slots.append((current, current + timedelta(minutes=APPOINTMENT_DURATION_MINUTES)))
+                
                 current += timedelta(minutes=APPOINTMENT_DURATION_MINUTES)
 
         # 3️⃣ Existing appointments

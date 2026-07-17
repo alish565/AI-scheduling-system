@@ -1,6 +1,6 @@
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage
-from server.graph.state import ClinicState
+from graph.state import ClinicState
 
 llm = ChatOpenAI(model="gpt-4o-mini")
 
@@ -14,27 +14,27 @@ def router_node(state: ClinicState) -> dict:
     current_status = state.get("status")
     
     # If they started scheduling, but haven't finished (status is not 'booked'), keep them there!
-    if current_route == "schedule" and current_status != "booked":
+    #if current_route == "schedule" and current_status != "booked":
         # We can safely bypass the LLM and lock them into the schedule node
-        return {"route": "schedule"}
+     #  return {"route": "schedule"}
     # ---------------------------------
 
     # If they are not currently scheduling, use the LLM to decide
     prompt = f"""
-You are a router for a medical center AI assistant.
+    You are a router for a medical center AI assistant.
 
-If the user is:
-- Asking about doctors, services, opening hours → respond with: rag
-- Trying to book, check availability → respond with: schedule
+    If the user is:
+    - Asking general informative questions about doctors, specialties, services, or opening hours → respond with: rag
+    - Trying to book, check availability, or providing booking details (such as email addresses, phone numbers, or verification codes) → respond with: schedule
 
-Only respond with one word:
-rag
-or
-schedule
+    Only respond with one word:
+    rag
+    or
+    schedule
 
-User message:
-{user_message}
-"""
+    User message:
+    {user_message}
+    """
 
     response = llm.invoke([HumanMessage(content=prompt)])
 

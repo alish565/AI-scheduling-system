@@ -1,40 +1,68 @@
 from langchain_core.messages import ToolMessage
-from server.graph.state import ClinicState
+from graph.state import ClinicState
 import json
 import ast
 from langchain_core.messages import ToolMessage
+from langchain_core.messages import AIMessage
 
 def update_state_from_tools(state: ClinicState) -> dict:
     """
-    Reads last ToolMessage and updates state from tool output.
+    Globally intercepts, patches tracking IDs, and correctly 
+    returns both message history fixes and state variables.
     """
-    last_message = state["messages"][-1]
+    messages = state.get("messages", [])
+    if not messages:
+        return {}
+
+    last_message = messages[-1]
     
-    # We will store only the fields we want to update in this dictionary
+    # We will accumulate all state updates here
     updates = {}
 
     if isinstance(last_message, ToolMessage):
+        # 🚀 FIX: If tracking ID is missing or blank, let's fix it
+        if not last_message.tool_call_id or last_message.tool_call_id == "":
+            print(f"\n--- 🛠️ GLOBAL SANITIZER: Patching missing ID for tool '{last_message.name}' ---")
+            
+            target_id = None
+            for msg in reversed(messages):
+                if isinstance(msg, AIMessage) and msg.tool_calls:
+                    for tool_call in msg.tool_calls:
+                        if tool_call.get("name") == last_message.name:
+                            target_id = tool_call["id"]
+                            break
+                    if not target_id:
+                        target_id = msg.tool_calls[-1]["id"]
+                    break
+            
+            if target_id:
+                print(f"--- 🛠️ GLOBAL SANITIZER: Successfully mapped to ID: {target_id} ---")
+                last_message.tool_call_id = target_id
+                
+                # 🚀 THE CRITICAL ADDITION: Force LangGraph to update this specific message object
+                updates["messages"] = [last_message]
+
+        # -------------------------------------------------------------
+        # Data Parsing Engine
+        # -------------------------------------------------------------
         content = last_message.content
-        print(f"\n--- DEBUG UPDATE STATE --- Raw Tool Output: {content}")
-        
-        try:
-            # First, try standard JSON parsing
-            data = json.loads(content)
-        except json.JSONDecodeError:
+        if isinstance(content, str) and "VERIFICATION_SUCCESSFUL" in content:
+            updates["email_verified"] = True
+        elif isinstance(content, str) and "VERIFICATION_FAILED" in content:
+            updates["email_verified"] = False
+        else:
             try:
-                # If it fails, it's likely a Python string representation. Use ast to parse it safely.
-                data = ast.literal_eval(content)
-            except Exception as e:
-                print(f"--- DEBUG UPDATE STATE --- Failed to parse tool output! Error: {e}")
-                data = None
+                data = json.loads(content)
+            except (json.JSONDecodeError, TypeError):
+                try:
+                    data = ast.literal_eval(content)
+                except Exception:
+                    data = None
 
-        if isinstance(data, dict):
-            for key, value in data.items():
-                # We only want to update keys if they actually belong in ClinicState
-                # (Ignoring tool-specific instructions meant for the LLM)
-                if key != "instruction_for_llm" and key != "message":
-                    updates[key] = value
-                    print(f"--- DEBUG UPDATE STATE --- Saving to state: {key} = {value}")
+            if isinstance(data, dict):
+                for key, value in data.items():
+                    if key not in ["instruction_for_llm", "message"]:
+                        updates[key] = value
 
-    # Return ONLY the changed values. LangGraph automatically merges this into ClinicState!
+    # Returns the updates. LangGraph will now see 'messages' and merge/overwrite the fixed message!
     return updates

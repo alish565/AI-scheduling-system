@@ -25,11 +25,11 @@ SessionLocal = sessionmaker(
 
 def get_db():
     """
-    Returns a database session.
-    Caller is responsible for closing it.
+    Yields a database session for FastAPI dependencies.
+    Automatically closes the session after request completes.
     """
     db = SessionLocal()
     try:
-        return db
+        yield db
     finally:
-        pass
+        db.close()

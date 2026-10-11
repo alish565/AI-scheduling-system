@@ -7,3 +7,9 @@ __pycache__/
 *.pyc
 chroma_data/
 .DS_Store
+.env
+server/.env
+_env
+*.log
+.venv/
+backups/

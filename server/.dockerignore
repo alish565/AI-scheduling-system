@@ -2,3 +2,10 @@ venv/
 .git/
 __pycache__/
 .env
+!alembic/README
+.env.*
+_env
+*.pyc
+.venv/
+chroma_db/
+*.log

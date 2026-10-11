@@ -18,3 +18,4 @@ chromadb
 psycopg[binary]
 psycopg-pool
 langgraph-checkpoint-postgres
+alembic>=1.13.0

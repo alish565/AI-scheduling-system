@@ -1,38 +1,116 @@
+# Production stack: only Caddy is exposed to the internet (ports 80/443).
+# db, api and n8n have NO published ports; they talk over the private network.
 services:
   db:
     image: postgres:16-alpine
-    restart: always
+    restart: unless-stopped
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: password
-      POSTGRES_DB: AI_scheduling
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-AI_scheduling}
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d AI_scheduling"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-postgres} -d $${POSTGRES_DB:-AI_scheduling}"]
       interval: 5s
       timeout: 5s
-      retries: 5
-    ports:
-      - "5433:5432"
+      retries: 10
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    
-  api:
-    build: 
+    networks:
+      - app_network
+
+  # One-off job: applies Alembic migrations, then exits. The API waits for it.
+  migrate:
+    build:
       context: ./server
-    ports:
-      - "8000:8000"
+    command: ["alembic", "upgrade", "head"]
+    restart: "no"
     environment:
-      - DATABASE_URL=postgresql://postgres:password@db:5432/AI_scheduling
-      - PYTHONPATH=/app  # Removed /server - this fixes the Import error
-    volumes:
-      # Maps your local data directly to the graph folder in /app
-      - ./chroma_data:/app/graph/agents/rag/chroma_db
-    env_file:
-      - ./server/.env
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-AI_scheduling}
+      PYTHONPATH: /app
     depends_on:
       db:
         condition: service_healthy
+    networks:
+      - app_network
+
+  api:
+    build:
+      context: ./server
+    restart: unless-stopped
+    expose:
+      - "8000"
+    env_file:
+      - ./server/.env
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-AI_scheduling}
+      PYTHONPATH: /app
+    volumes:
+      - chroma_data:/app/graph/agents/rag/chroma_db
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    networks:
+      - app_network
+
+  n8n:
+    image: docker.n8n.io/n8nio/n8n:latest   # once it works, pin a specific version tag
+    restart: unless-stopped
+    expose:
+      - "5678"
+    environment:
+      N8N_HOST: ${DOMAIN:?Set DOMAIN in .env}
+      N8N_PROTOCOL: https
+      N8N_PORT: 5678
+      WEBHOOK_URL: https://${DOMAIN}/
+      N8N_EDITOR_BASE_URL: https://${DOMAIN}/
+      N8N_PROXY_HOPS: 1                      # n8n sits behind Caddy
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:?Set N8N_ENCRYPTION_KEY in .env}
+      GENERIC_TIMEZONE: ${TZ:-Asia/Beirut}
+      TZ: ${TZ:-Asia/Beirut}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:5678/healthz || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    volumes:
+      - n8n_data:/home/node/.n8n
+    networks:
+      - app_network
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      DOMAIN: ${DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - n8n
+    networks:
+      - app_network
 
 volumes:
-  postgres_data: 
-  
+  postgres_data:
+  chroma_data:
+  n8n_data:
+  caddy_data:
+  caddy_config:
+
+networks:
+  app_network:
+    driver: bridge

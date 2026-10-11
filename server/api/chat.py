@@ -1,12 +1,11 @@
 import uuid
-from typing import List, Optional
+from typing import Optional
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from graph.graph import graph
 import db.models
 from db.models import Base
-from db.session import engine, get_db
-from contextlib import asynccontextmanager
+from db.session import engine
 
 Base.metadata.create_all(bind=engine) 
 print("🎯 Core tables forced successfully!")
